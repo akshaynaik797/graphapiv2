@@ -109,52 +109,59 @@ def get_mails():
                     if 'value' in graph_data2:
                         for i in graph_data2['value']:
                             try:
-                                date, subject, attach_path, sender = '', '', '', ''
-                                format = "%Y-%m-%dT%H:%M:%SZ"
-                                b = datetime.strptime(i['receivedDateTime'], format).replace(tzinfo=pytz.utc).astimezone(
-                                    pytz.timezone('Asia/Kolkata')).replace(
-                                    tzinfo=None)
-                                date, subject, sender = b, i['subject'], i['sender']['emailAddress']['address']
-                                # print(i['receivedDateTime'], b, i['subject'])
-                                # print(i['sender']['emailAddress']['address'])
-                                if i['hasAttachments'] is True:
-                                    q = f"https://graph.microsoft.com/v1.0/users/{email}/mailFolders/inbox/messages/{i['id']}/attachments"
-                                    attach_data = requests.get(q,
-                                                               headers={'Authorization': 'Bearer ' + result[
-                                                                   'access_token']}, ).json()
-                                    for j in attach_data['value']:
-                                        if '@odata.mediaContentType' in j:
-                                            # print(j['@odata.mediaContentType'], j['name'])
-                                            if file_blacklist(j['name']):
-                                                j['name'] = file_no(4) + j['name']
-                                                with open(os.path.join('new_attach', j['name']), 'w+b') as fp:
-                                                    fp.write(base64.b64decode(j['contentBytes']))
-                                                    # print('wrote', j['name'])
-                                                    attach_path = j['name']
-                                                attach_path = os.path.join('new_attach', attach_path)
-                                else:
-                                    filename = 'new_attach/' + file_no(8) + '.pdf'
-                                    if i['body']['contentType'] == 'html':
-                                        with open('new_attach/' + 'temp.html', 'w') as fp:
-                                            fp.write(i['body']['content'])
-                                        pdfkit.from_file('new_attach/temp.html', filename, configuration=pdfconfig)
-                                        attach_path = filename
-                                    elif i['body']['contentType'] == 'text':
-                                        with open('new_attach/' + 'temp.text', 'w') as fp:
-                                            fp.write(i['body']['content'])
-                                        pdfkit.from_file('new_attach/temp.text', filename, configuration=pdfconfig)
-                                        attach_path = filename
-                                print(date, subject, attach_path, sender, sep='|')
+                                exist = False
                                 with mysql.connector.connect(**conn_data) as con:
                                     cur = con.cursor()
-                                    q = f"insert into {table_name} (`id`,`subject`,`date`,`sys_time`,`attach_path`,`completed`, `sender`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                                    data = (
-                                    i['id'], subject, date, str(datetime.now()), os.path.abspath(attach_path), '', sender)
                                     cur.execute(f"select * from {table_name} where `id`=%s limit 1", (i['id'],))
                                     temp_var = cur.fetchone()
-                                    if temp_var is None:
+                                    if temp_var is not None:
+                                        exist = True
+                                if exist is False:
+                                    date, subject, attach_path, sender = '', '', '', ''
+                                    format = "%Y-%m-%dT%H:%M:%SZ"
+                                    b = datetime.strptime(i['receivedDateTime'], format).replace(tzinfo=pytz.utc).astimezone(
+                                        pytz.timezone('Asia/Kolkata')).replace(
+                                        tzinfo=None)
+                                    date, subject, sender = b, i['subject'], i['sender']['emailAddress']['address']
+                                    # print(i['receivedDateTime'], b, i['subject'])
+                                    # print(i['sender']['emailAddress']['address'])
+                                    if i['hasAttachments'] is True:
+                                        q = f"https://graph.microsoft.com/v1.0/users/{email}/mailFolders/inbox/messages/{i['id']}/attachments"
+                                        attach_data = requests.get(q,
+                                                                   headers={'Authorization': 'Bearer ' + result[
+                                                                       'access_token']}, ).json()
+                                        for j in attach_data['value']:
+                                            if '@odata.mediaContentType' in j:
+                                                j['name'] = j['name'].replace('.PDF', '.pdf')
+                                                # print(j['@odata.mediaContentType'], j['name'])
+                                                if file_blacklist(j['name']):
+                                                    j['name'] = file_no(4) + j['name']
+                                                    with open(os.path.join('new_attach', j['name']), 'w+b') as fp:
+                                                        fp.write(base64.b64decode(j['contentBytes']))
+                                                        # print('wrote', j['name'])
+                                                        attach_path = j['name']
+                                                    attach_path = os.path.join('new_attach', attach_path)
+                                    else:
+                                        filename = 'new_attach/' + file_no(8) + '.pdf'
+                                        if i['body']['contentType'] == 'html':
+                                            with open('new_attach/' + 'temp.html', 'w') as fp:
+                                                fp.write(i['body']['content'])
+                                            pdfkit.from_file('new_attach/temp.html', filename, configuration=pdfconfig)
+                                            attach_path = filename
+                                        elif i['body']['contentType'] == 'text':
+                                            with open('new_attach/' + 'temp.text', 'w') as fp:
+                                                fp.write(i['body']['content'])
+                                            pdfkit.from_file('new_attach/temp.text', filename, configuration=pdfconfig)
+                                            attach_path = filename
+                                    # print(date, subject, attach_path, sender, sep='|')
+                                    with mysql.connector.connect(**conn_data) as con:
+                                        cur = con.cursor()
+                                        q = f"insert into {table_name} (`id`,`subject`,`date`,`sys_time`,`attach_path`,`completed`, `sender`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                                        data = (
+                                        i['id'], subject, date, str(datetime.now()), os.path.abspath(attach_path), '', sender)
                                         cur.execute(q, data)
                                         con.commit()
+                                        print(date, subject, attach_path, sender, sep='|')
                             except:
                                 log_exceptions(mid=i['id'])
                                 z = 1
@@ -166,7 +173,7 @@ def get_mails():
                     else:
                         break
             ##
-            time.sleep(10)
+            time.sleep(60)
         except:
             log_exceptions()
 
